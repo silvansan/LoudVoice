@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin – Voice</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 40px auto; max-width: 500px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 24px; }
+    h2 { margin-top: 0; }
+    input { width: 100%; padding: 10px; font-size: 16px; margin-top: 6px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; }
+    button { padding: 10px 16px; font-size: 15px; margin-top: 10px; cursor: pointer; border-radius: 6px; border: none; }
+    .btn-add { background: #0066cc; color: #fff; }
+    .btn-del { background: #cc3300; color: #fff; padding: 6px 12px; font-size: 13px; margin: 0; }
+    .room-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border: 1px solid #eee; border-radius: 8px; margin-top: 8px; }
+    .room-name { font-size: 17px; font-weight: bold; }
+    #status { margin-top: 12px; font-size: 14px; color: green; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>⚙️ Admin – Rooms</h2>
+    <label>Admin password
+      <input type="password" id="password" placeholder="Enter admin password" />
+    </label>
+    <div id="rooms" style="margin-top:16px"></div>
+    <hr style="margin:16px 0" />
+    <label>Add a new room
+      <input id="newroom" placeholder="e.g. IT, ES, HALL-A" />
+    </label>
+    <button class="btn-add" onclick="addRoom()">Add room</button>
+    <div id="status"></div>
+  </div>
+  <script>
+    const password = () => document.getElementById("password").value;
+    const status = (msg, color = "green") => {
+      const el = document.getElementById("status");
+      el.textContent = msg;
+      el.style.color = color;
+    };
+
+    async function loadRooms() {
+      const r = await fetch("/rooms");
+      const data = await r.json();
+      const container = document.getElementById("rooms");
+      container.innerHTML = "";
+      if (!data.rooms.length) {
+        container.innerHTML = "<p style='color:#999'>No rooms yet.</p>";
+        return;
+      }
+      for (const room of data.rooms) {
+        const row = document.createElement("div");
+        row.className = "room-row";
+        row.innerHTML = `<span class="room-name">${room}</span><button class="btn-del" onclick="deleteRoom('${room}')">Delete</button>`;
+        container.appendChild(row);
+      }
+    }
+
+    async function addRoom() {
+      const name = document.getElementById("newroom").value.trim();
+      if (!name) return status("Enter a room name.", "red");
+      const r = await fetch("/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": password() },
+        body: JSON.stringify({ name }),
+      });
+      const data = await r.json();
+      if (!r.ok) return status(data.error, "red");
+      document.getElementById("newroom").value = "";
+      status("Room added!");
+      loadRooms();
+    }
+
+    async function deleteRoom(name) {
+      if (!confirm("Delete room " + name + "?")) return;
+      const r = await fetch("/rooms/" + encodeURIComponent(name), {
+        method: "DELETE",
+        headers: { "x-admin-password": password() },
+      });
+      const data = await r.json();
+      if (!r.ok) return status(data.error, "red");
+      status("Room deleted.");
+      loadRooms();
+    }
+
+    loadRooms();
+  </script>
+</body>
+</html>

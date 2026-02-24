@@ -1,0 +1,9 @@
+{
+  "name": "livekit-web",
+  "type": "module",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "livekit-server-sdk": "^2.7.2"
+  }
+}
