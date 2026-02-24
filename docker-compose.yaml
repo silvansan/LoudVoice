@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: livekit
+    restart: unless-stopped
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+      LIVEKIT_CONFIG: |
+        port: 7880
+        log_level: info
+        rtc:
+          tcp_port: 7881
+          port_range_start: 50000
+          port_range_end: 50100
+          use_external_ip: true
+    ports:
+      - "7880:7880/tcp"
+      - "7881:7881/tcp"
+      - "50000-50100:50000-50100/udp"
+    networks:
+      - livekit-net
+
+  livekit-web:
+    image: node:20-alpine
+    container_name: livekit-web
+    restart: unless-stopped
+    depends_on:
+      - livekit
+    environment:
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      PUBLIC_LIVEKIT_WSS: ${PUBLIC_LIVEKIT_WSS}
+      LOCAL_LIVEKIT_WSS: ${LOCAL_LIVEKIT_WSS}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ACCESS_TOKEN: ${ACCESS_TOKEN}
+    ports:
+      - "7884:8080/tcp"
+    volumes:
+      - /srv/docker/livekit-web:/app
+    working_dir: /app
+    command: sh -c "npm i --omit=dev && node server.mjs"
+    networks:
+      - livekit-net
+
+networks:
+  livekit-net:
+    driver: bridge
