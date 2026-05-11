@@ -584,7 +584,7 @@ app.post("/api/channels/:channelId/speaker-session/stop", (_, res) => {
 app.get("/health", (_, res) => res.json({ ok: true, publicWss, localWss }));
 
 app.listen(8080, () => {
-  console.log("lOudvoice web on :8080");
+  console.log("UnderSound web on :8080");
   console.log("  public WSS:", publicWss);
   console.log("  local  WSS:", localWss);
   console.log("  data:", dataPath);

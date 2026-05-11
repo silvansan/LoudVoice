@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Speaker - lOudvoice</title>
+  <title>Speaker - UnderSound</title>
   <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
@@ -11,7 +11,7 @@
     <header class="brand event-brand">
       <img id="logo" class="logo event-logo" src="/logo.svg" alt="Event logo" />
       <p class="eyebrow">Speaker</p>
-      <h1 id="eventName">lOudvoice</h1>
+      <h1 id="eventName">UnderSound</h1>
       <p id="description"></p>
     </header>
 
@@ -98,7 +98,7 @@
       const data = await api(url);
       channel = data.channel;
       $("logo").src = data.logoUrl || "/logo.svg";
-      $("eventName").textContent = data.event.name || "lOudvoice";
+      $("eventName").textContent = data.event.name || "UnderSound";
       $("description").textContent = data.event.publicDescription || data.event.location || "";
       $("channelName").textContent = channel.name;
       document.title = channel.name + " Speaker - " + data.event.name;

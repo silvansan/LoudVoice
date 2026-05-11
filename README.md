@@ -1,6 +1,6 @@
-# lOudvoice
+# UnderSound
 
-lOudvoice is a self-hosted event audio app built on LiveKit. It supports multiple events, event managers, per-event branding, per-channel speaker/listener links, QR codes, WebRTC listening, and HLS listening for phones.
+UnderSound is a self-hosted event audio app built on LiveKit. It supports multiple events, event managers, per-event branding, per-channel speaker/listener links, QR codes, WebRTC listening, and HLS listening for phones.
 
 ## Current Shape
 
@@ -55,7 +55,7 @@ For a domain deployment, use two proxy hosts:
 
 | Domain | Forward to | Notes |
 | --- | --- | --- |
-| `voice.example.com` | `localhost:7884` | lOudvoice web app. |
+| `voice.example.com` | `localhost:7884` | UnderSound web app. |
 | `livekit.example.com` | `localhost:7880` | LiveKit signaling with WebSocket support. |
 
 Open firewall/router ports for:
@@ -71,6 +71,6 @@ Set `PUBLIC_LIVEKIT_WSS=wss://livekit.example.com` when serving over HTTPS.
 
 ## Data
 
-The first implementation uses a file-backed JSON store at `loudvoice_web/data/app-data.json`. Uploaded event logos are stored under `loudvoice_web/uploads/`. Both folders are ignored by Git.
+The first implementation uses a file-backed JSON store at `undersound_web/data/app-data.json`. Uploaded event logos are stored under `undersound_web/uploads/`. Both folders are ignored by Git.
 
 This is intentionally isolated behind `store.mjs`, so it can be swapped for SQLite/Postgres later without rewriting the browser pages.

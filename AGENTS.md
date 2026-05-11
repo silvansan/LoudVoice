@@ -1,7 +1,7 @@
 # Agent Work Summary
 
 ## Overview
-This file documents the changes made by the agent during the current session for the LoudVoice project. It captures the feature work, UI improvements, auth migration, and container actions so the work can be traced later.
+This file documents the changes made by the agent during the current session for the UnderSound project. It captures the feature work, UI improvements, auth migration, and container actions so the work can be traced later.
 
 ## Completed work
 
@@ -37,12 +37,12 @@ This file documents the changes made by the agent during the current session for
 - Confirmed that the container was recomposed and running with the latest changes.
 
 ## Files changed
-- `loudvoice_web/server.mjs`
-- `loudvoice_web/store.mjs`
-- `loudvoice_web/public/listen.html`
-- `loudvoice_web/public/speaker.html`
-- `loudvoice_web/public/admin.html`
-- `loudvoice_web/public/app.css`
+- `undersound_web/server.mjs`
+- `undersound_web/store.mjs`
+- `undersound_web/public/listen.html`
+- `undersound_web/public/speaker.html`
+- `undersound_web/public/admin.html`
+- `undersound_web/public/app.css`
 - `AGENTS.md`
 
 ## Notes / current state

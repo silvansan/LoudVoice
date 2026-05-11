@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Listen - lOudvoice</title>
+  <title>Listen - UnderSound</title>
   <link rel="stylesheet" href="/app.css" />
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
@@ -12,7 +12,7 @@
     <header class="brand event-brand">
       <img id="logo" class="logo event-logo" src="/logo.svg" alt="Event logo" />
       <p class="eyebrow">Listen</p>
-      <h1 id="eventName">lOudvoice</h1>
+      <h1 id="eventName">UnderSound</h1>
       <p id="description"></p>
     </header>
 
@@ -134,7 +134,7 @@
       eventSlug = eventToLoad;
       channelName = channelToLoad;
       $("logo").src = data.logoUrl || "/logo.svg";
-      $("eventName").textContent = data.event.name || "lOudvoice";
+      $("eventName").textContent = data.event.name || "UnderSound";
       $("description").textContent = data.event.publicDescription || data.event.location || "";
       $("channelName").textContent = channel.name;
       document.title = channel.name + " Listen - " + data.event.name;

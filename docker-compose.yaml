@@ -1,3 +1,5 @@
+name: undersound
+
 services:
   redis:
     image: redis:7-alpine
@@ -32,9 +34,9 @@ services:
     networks:
       - livekit-net
 
-  livekit-web:
+  undersound-web:
     image: node:20-alpine
-    container_name: livekit-web
+    container_name: undersound-web
     restart: unless-stopped
     depends_on:
       - livekit
@@ -53,7 +55,7 @@ services:
     ports:
       - "7884:8080/tcp"
     volumes:
-      - ./loudvoice_web:/app
+      - ./undersound_web:/app
     working_dir: /app
     command: sh -c "npm i --omit=dev && node server.mjs"
     networks:
@@ -78,7 +80,7 @@ services:
         redis:
           address: redis:6379
     volumes:
-      - ./loudvoice_web/public/hls:/out
+      - ./undersound_web/public/hls:/out
     working_dir: /out
     networks:
       - livekit-net

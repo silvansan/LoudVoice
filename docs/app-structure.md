@@ -1,8 +1,8 @@
-# lOudvoice App Structure
+# UnderSound App Structure
 
 ## Product Shape
 
-lOudvoice becomes a multi-event audio broadcasting platform.
+UnderSound becomes a multi-event audio broadcasting platform.
 
 The base domain opens a login page. After login, users see only what their account is allowed to manage.
 

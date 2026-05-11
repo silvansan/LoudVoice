@@ -1,4 +1,4 @@
 node_modules
 .env
-loudvoice_web/data/
-loudvoice_web/uploads/
+undersound_web/data/
+undersound_web/uploads/

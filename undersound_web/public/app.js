@@ -22,7 +22,7 @@
     });
   }
 
-  window.LoudVoice = {
+  window.UnderSound = {
     accessToken,
     withToken,
     link,

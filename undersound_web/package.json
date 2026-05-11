@@ -1,5 +1,5 @@
 {
-  "name": "loudvoice-web",
+  "name": "undersound-web",
   "type": "module",
   "dependencies": {
     "cors": "^2.8.5",
