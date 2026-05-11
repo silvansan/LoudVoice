@@ -3,87 +3,623 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Admin – Voice</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 40px auto; max-width: 500px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 24px; }
-    h2 { margin-top: 0; }
-    input { width: 100%; padding: 10px; font-size: 16px; margin-top: 6px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; }
-    button { padding: 10px 16px; font-size: 15px; margin-top: 10px; cursor: pointer; border-radius: 6px; border: none; }
-    .btn-add { background: #0066cc; color: #fff; }
-    .btn-del { background: #cc3300; color: #fff; padding: 6px 12px; font-size: 13px; margin: 0; }
-    .room-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border: 1px solid #eee; border-radius: 8px; margin-top: 8px; }
-    .room-name { font-size: 17px; font-weight: bold; }
-    #status { margin-top: 12px; font-size: 14px; color: green; }
-  </style>
+  <title>lOudvoice Admin</title>
+  <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
-  <div class="card">
-    <h2>⚙️ Admin – Rooms</h2>
-    <label>Admin password
-      <input type="password" id="password" placeholder="Enter admin password" />
-    </label>
-    <div id="rooms" style="margin-top:16px"></div>
-    <hr style="margin:16px 0" />
-    <label>Add a new room
-      <input id="newroom" placeholder="e.g. IT, ES, HALL-A" />
-    </label>
-    <button class="btn-add" onclick="addRoom()">Add room</button>
-    <div id="status"></div>
-  </div>
-  <script>
-    const password = () => document.getElementById("password").value;
-    const status = (msg, color = "green") => {
-      const el = document.getElementById("status");
-      el.textContent = msg;
-      el.style.color = color;
-    };
+  <main class="shell">
+    <header class="brand">
+      <img class="logo" src="/logo.svg" alt="lOudvoice logo" />
+      <h1>lOudvoice Admin</h1>
+      <p id="whoami"></p>
+    </header>
 
-    async function loadRooms() {
-      const r = await fetch("/rooms");
-      const data = await r.json();
-      const container = document.getElementById("rooms");
-      container.innerHTML = "";
-      if (!data.rooms.length) {
-        container.innerHTML = "<p style='color:#999'>No rooms yet.</p>";
+    <section class="card">
+      <div class="toolbar">
+        <button id="dashboardButton">Dashboard</button>
+        <button id="refresh">Refresh</button>
+        <button id="logout" class="danger">Logout</button>
+      </div>
+      <div id="status" class="status"></div>
+    </section>
+
+    <section id="dashboardPanel" class="card">
+      <h2>Dashboard</h2>
+      <div class="dashboard-grid">
+        <button id="dashboardProfile">My profile</button>
+        <button id="dashboardEvents">My events</button>
+        <button id="dashboardUsers" class="secondary hidden">User management</button>
+      </div>
+    </section>
+
+    <section id="profilePanel" class="card hidden">
+      <h2>My Profile</h2>
+      <div class="grid">
+        <label>Email <input id="profileUsername" autocomplete="email" /></label>
+        <label>Display name <input id="profileDisplayName" autocomplete="name" /></label>
+        <label>New password <input id="profilePassword" type="password" autocomplete="new-password" /></label>
+      </div>
+      <div class="toolbar">
+        <button id="saveProfile">Save Profile</button>
+        <button id="changeOwnPassword" class="secondary">Change Password</button>
+      </div>
+    </section>
+
+    <section id="usersPanel" class="card hidden">
+      <h2>Users</h2>
+      <div class="form-row">
+        <label>Email <input id="newEmail" /></label>
+        <label>Display name <input id="newDisplayName" /></label>
+        <label>Password <input id="newPassword" type="password" /></label>
+        <label>Role
+          <select id="newRole">
+            <option value="event_manager">Event manager</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+      </div>
+      <button id="createUser">Create User</button>
+      <div id="users" class="accordion"></div>
+    </section>
+
+    <section id="eventsPanel" class="card hidden">
+      <h2>Events</h2>
+      <button id="toggleNewEventForm" class="secondary">New Event</button>
+      <section id="newEventPanel" class="card hidden">
+        <h3>Create Event</h3>
+        <div class="grid">
+          <label>Event name <input id="newEventName" placeholder="My Event" /></label>
+          <label>Location <input id="newEventLocation" placeholder="New York, NY" /></label>
+          <label>Public description <input id="newEventDescription" placeholder="Live audio for this event." /></label>
+        </div>
+        <div class="toolbar">
+          <button id="createEventBtn">Create Event</button>
+          <button id="cancelEventBtn" class="secondary">Cancel</button>
+        </div>
+      </section>
+      <div id="events" class="accordion"></div>
+    </section>
+
+    <section id="eventDetailPanel" class="card hidden">
+      <div class="toolbar">
+        <button id="backToEvents" class="secondary">Back to events</button>
+        <button id="refreshEvent" class="secondary">Refresh event</button>
+      </div>
+      <div id="eventDetailTitle" class="room-top"></div>
+      <div id="eventDetailContent"></div>
+    </section>
+  </main>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    let me = null;
+    let users = [];
+    let events = [];
+
+    function status(message, isError = false) {
+      $("status").textContent = message;
+      $("status").classList.toggle("error", isError);
+    }
+
+    async function api(path, options = {}) {
+      const r = await fetch(path, {
+        ...options,
+        headers: {
+          ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+          ...(options.headers || {}),
+        },
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "Request failed: " + r.status);
+      return data;
+    }
+
+    async function init() {
+      const auth = await api("/api/auth/me");
+      if (!auth.user) {
+        location.href = "/";
         return;
       }
-      for (const room of data.rooms) {
+      me = auth.user;
+      $("whoami").textContent = me.displayName + " (" + me.role + ")";
+      $("profileUsername").value = me.email || me.username || "";
+      $("profileDisplayName").value = me.displayName || "";
+      $("usersPanel").classList.toggle("hidden", me.role !== "admin");
+      await loadAll();
+      showDashboard();
+    }
+
+    async function loadAll() {
+      const eventData = await api("/api/events");
+      events = eventData.events;
+      if (me.role === "admin") {
+        users = (await api("/api/users")).users;
+        renderUsers();
+      }
+      await renderEvents();
+    }
+
+    function showPage(pageId) {
+      ["dashboardPanel", "profilePanel", "usersPanel", "eventsPanel", "eventDetailPanel"].forEach(id => {
+        const el = $(id);
+        if (el) el.classList.toggle("hidden", id !== pageId);
+      });
+      if (pageId === "dashboardPanel") {
+        $("status").textContent = "";
+      }
+    }
+
+    function showDashboard() {
+      showPage("dashboardPanel");
+      $("dashboardUsers").classList.toggle("hidden", me.role !== "admin");
+    }
+
+    async function showEventPage(event) {
+      showPage("eventDetailPanel");
+      $("eventDetailTitle").innerHTML = `
+        <div class="room-top">
+          <div>
+            <div class="room-name">${event.name}</div>
+            <div class="status-pill">${event.slug}</div>
+          </div>
+          <div style="text-align:right; color: var(--muted); font-size: 12px;">
+            Created ${new Date(event.createdAt).toLocaleDateString()}
+          </div>
+        </div>
+      `;
+      const content = $("eventDetailContent");
+      content.replaceChildren();
+      const channels = (await api("/api/events/" + event.id + "/channels")).channels;
+      content.append(eventSettings(event), await channelList(event, channels));
+      if (me.role === "admin") content.append(await assignmentPanel(event));
+    }
+
+    function openEventDetail(eventId) {
+      const event = events.find(e => e.id === eventId);
+      if (event) showEventPage(event);
+    }
+
+    function resetEventForm() {
+      $("newEventName").value = "";
+      $("newEventLocation").value = "";
+      $("newEventDescription").value = "";
+    }
+
+    function toggleEventForm(open) {
+      $("newEventPanel").classList.toggle("hidden", !open);
+      if (open) $("newEventName").focus();
+    }
+
+    function renderUsers() {
+      const container = $("users");
+      container.replaceChildren(...users.map(user => {
         const row = document.createElement("div");
-        row.className = "room-row";
-        row.innerHTML = `<span class="room-name">${room}</span><button class="btn-del" onclick="deleteRoom('${room}')">Delete</button>`;
+        row.className = "accordion-row";
+        
+        const header = document.createElement("button");
+        header.className = "accordion-header";
+        header.innerHTML = `
+          <span class="accordion-toggle">▶</span>
+          <span class="accordion-email">${user.email || user.username}</span>
+          <span class="accordion-display">${user.displayName}</span>
+          <span class="accordion-role">${user.role}</span>
+          <span class="accordion-accessed">${user.lastAccessed ? new Date(user.lastAccessed).toLocaleDateString() : 'Never'}</span>
+        `;
+        header.addEventListener("click", (e) => {
+          e.preventDefault();
+          row.classList.toggle("open");
+          header.classList.toggle("open");
+        });
+        
+        const details = document.createElement("div");
+        details.className = "accordion-details";
+        details.innerHTML = `
+          <div class="detail-fields">
+            <label>Email <input class="edit-email" /></label>
+            <label>Display name <input class="edit-display" /></label>
+            <label>Role
+              <select class="edit-role">
+                <option value="event_manager">Event manager</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+            <label>New password <input type="password" /></label>
+          </div>
+          <div class="detail-actions">
+            <button class="save">Save User</button>
+            <button class="set-pwd">Set Password</button>
+            <button class="danger disable">Disable</button>
+          </div>
+        `;
+        
+        details.querySelector(".edit-email").value = user.email || user.username || "";
+        details.querySelector(".edit-display").value = user.displayName || "";
+        details.querySelector(".edit-role").value = user.role;
+        const passwordInput = details.querySelector("label:last-of-type input");
+        const saveBtn = details.querySelector(".save");
+        const pwdBtn = details.querySelector(".set-pwd");
+        const disableBtn = details.querySelector(".disable");
+        
+        saveBtn.addEventListener("click", async () => {
+          await api("/api/users/" + user.id, {
+            method: "PATCH",
+            body: JSON.stringify({
+              email: details.querySelector(".edit-email").value.trim(),
+              displayName: details.querySelector(".edit-display").value.trim(),
+              role: details.querySelector(".edit-role").value,
+            }),
+          });
+          status("User saved.");
+          await loadAll();
+        });
+        
+        pwdBtn.addEventListener("click", async () => {
+          await api("/api/users/" + user.id + "/password", { method: "POST", body: JSON.stringify({ password: passwordInput.value }) });
+          passwordInput.value = "";
+          status("Password changed.");
+        });
+        
+        disableBtn.disabled = user.id === me.id;
+        disableBtn.addEventListener("click", async () => {
+          if (!confirm("Disable " + (user.email || user.username) + "?")) return;
+          await api("/api/users/" + user.id + "/disable", { method: "POST" });
+          status("User disabled.");
+          await loadAll();
+        });
+        
+        row.append(header, details);
+        return row;
+      }));
+    }
+
+    async function renderEvents() {
+      const container = $("events");
+      container.replaceChildren();
+      for (const event of events) {
+        const channels = (await api("/api/events/" + event.id + "/channels")).channels;
+        const logoUrl = (await api("/api/events/" + event.id)).logoUrl;
+        
+        const row = document.createElement("div");
+        row.className = "accordion-row";
+        row.style.gridTemplateColumns = "1fr 120px";
+        row.style.display = "grid";
+        row.style.alignItems = "center";
+        row.style.columnGap = "12px";
+        row.style.padding = "16px";
+        
+        const summary = document.createElement("div");
+        summary.innerHTML = `
+          <div style="display:flex; gap:12px; align-items:center;">
+            <img src="${logoUrl}" alt="" style="width:48px; height:48px; border-radius:8px; object-fit:cover;">
+            <div>
+              <div style="font-weight:600; font-size:16px;">${event.name}</div>
+              <div style="font-size:13px; color: var(--muted);">${event.slug}</div>
+            </div>
+          </div>
+        `;
+        
+        const meta = document.createElement("div");
+        meta.style.display = "flex";
+        meta.style.justifyContent = "flex-end";
+        meta.style.gap = "8px";
+        meta.innerHTML = `
+          <span style="font-size:12px; color: var(--muted);">Channels: ${channels.length}</span>
+          <button class="secondary">Open</button>
+        `;
+        meta.querySelector("button").addEventListener("click", () => openEventDetail(event.id));
+        
+        row.append(summary, meta);
         container.appendChild(row);
       }
     }
 
-    async function addRoom() {
-      const name = document.getElementById("newroom").value.trim();
-      if (!name) return status("Enter a room name.", "red");
-      const r = await fetch("/rooms", {
+    function eventHeader(event, logoUrl) {
+      const header = document.createElement("div");
+      header.className = "room-top";
+      const title = document.createElement("div");
+      title.innerHTML = `<img class="logo" style="width:72px;height:72px" src="${logoUrl}" alt="">`;
+      const name = document.createElement("div");
+      name.className = "room-name";
+      name.textContent = event.name;
+      title.appendChild(name);
+      const slug = document.createElement("span");
+      slug.className = "status-pill";
+      slug.textContent = event.slug;
+      header.append(title, slug);
+      return header;
+    }
+
+    function eventSettings(event) {
+      const box = document.createElement("div");
+      box.className = "grid";
+      box.innerHTML = `
+        <label>Name <input class="event-name" /></label>
+        <label>Location <input class="event-location" /></label>
+        <label>Public description <input class="event-description" /></label>
+        <label>PNG logo <input class="event-logo" type="file" accept="image/png" /></label>
+        <div class="actions">
+          <button class="save">Save Event</button>
+          <button class="upload">Upload Logo</button>
+          <button class="danger archive">Archive</button>
+        </div>
+      `;
+      box.querySelector(".event-name").value = event.name || "";
+      box.querySelector(".event-location").value = event.location || "";
+      box.querySelector(".event-description").value = event.publicDescription || "";
+      box.querySelector(".save").addEventListener("click", async () => {
+        await api("/api/events/" + event.id, {
+          method: "PATCH",
+          body: JSON.stringify({
+            name: box.querySelector(".event-name").value,
+            location: box.querySelector(".event-location").value,
+            publicDescription: box.querySelector(".event-description").value,
+          }),
+        });
+        status("Event saved.");
+        await loadAll();
+      });
+      box.querySelector(".upload").addEventListener("click", async () => uploadLogo(event.id, box.querySelector(".event-logo").files[0]));
+      box.querySelector(".archive").addEventListener("click", async () => {
+        if (!confirm("Archive " + event.name + "?")) return;
+        await api("/api/events/" + event.id, { method: "DELETE" });
+        status("Event archived.");
+        await loadAll();
+      });
+      return box;
+    }
+
+    async function uploadLogo(eventId, file) {
+      if (!file) return status("Choose a PNG logo first.", true);
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      await api("/api/events/" + eventId + "/logo", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-password": password() },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ filename: file.name, dataUrl }),
       });
-      const data = await r.json();
-      if (!r.ok) return status(data.error, "red");
-      document.getElementById("newroom").value = "";
-      status("Room added!");
-      loadRooms();
+      status("Logo uploaded.");
+      await loadAll();
     }
 
-    async function deleteRoom(name) {
-      if (!confirm("Delete room " + name + "?")) return;
-      const r = await fetch("/rooms/" + encodeURIComponent(name), {
-        method: "DELETE",
-        headers: { "x-admin-password": password() },
+    async function channelList(event, channels) {
+      const wrapper = document.createElement("div");
+      const add = document.createElement("div");
+      add.className = "toolbar";
+      add.innerHTML = `<input placeholder="Channel name, e.g. FR"><button>Add Channel</button>`;
+      add.querySelector("button").addEventListener("click", async () => {
+        await api("/api/events/" + event.id + "/channels", {
+          method: "POST",
+          body: JSON.stringify({ name: add.querySelector("input").value }),
+        });
+        status("Channel added.");
+        await loadAll();
       });
-      const data = await r.json();
-      if (!r.ok) return status(data.error, "red");
-      status("Room deleted.");
-      loadRooms();
+      wrapper.appendChild(add);
+      const grid = document.createElement("div");
+      grid.className = "grid";
+      for (const channel of channels) {
+        grid.appendChild(await channelCard(channel));
+      }
+      wrapper.appendChild(grid);
+      return wrapper;
     }
 
-    loadRooms();
+    async function channelCard(channel) {
+      const links = (await api("/api/channels/" + channel.id + "/links")).links;
+      const card = document.createElement("article");
+      card.className = "room-card";
+      const hls = channel.hls;
+      card.innerHTML = `
+        <div class="room-top">
+          <span class="room-name"></span>
+          <span class="status-pill ${hls ? "active" : ""}">${hls ? "HLS On" : "HLS Off"}</span>
+        </div>
+        <div class="actions links"></div>
+        <div class="grid fields"></div>
+        <div class="actions qr-row"></div>
+        <div class="actions controls"></div>
+      `;
+      card.querySelector(".room-name").textContent = channel.name;
+      const speakerAnchor = buttonLink("Speaker", links.speaker);
+      const listenerAnchor = buttonLink("Listener", links.listener);
+      card.querySelector(".links").append(speakerAnchor, listenerAnchor);
+      const speakerLinkField = linkField("Speaker Link", links.speaker);
+      const listenerLinkField = linkField("Listener Link", links.listener);
+      const speakerQrBlock = qr("Speaker QR", "/api/channels/" + channel.id + "/qr/speaker.svg");
+      const listenerQrBlock = qr("Listener QR", "/api/channels/" + channel.id + "/qr/listener.svg");
+      card.querySelector(".fields").append(speakerLinkField, listenerLinkField);
+      card.querySelector(".qr-row").append(speakerQrBlock, listenerQrBlock);
+      const controls = card.querySelector(".controls");
+      if (hls) {
+        controls.append(actionButton("Stop HLS", "danger", async () => {
+          await api("/api/channels/" + channel.id + "/hls/stop", { method: "POST" });
+          status("HLS stopped.");
+          await loadAll();
+        }));
+      }
+      controls.append(
+        actionButton("Refresh Speaker Token", "secondary", async () => {
+          const data = await refreshToken(channel.id, "speaker");
+          speakerLinkField.querySelector("input").value = data.links.speaker;
+          speakerAnchor.href = data.links.speaker;
+          speakerQrBlock.querySelector("img").src = "/api/channels/" + channel.id + "/qr/speaker.svg?cache=" + Date.now();
+        }),
+        actionButton("Refresh Listener Token", "secondary", async () => {
+          const data = await refreshToken(channel.id, "listener");
+          listenerLinkField.querySelector("input").value = data.links.listener;
+          listenerAnchor.href = data.links.listener;
+          listenerQrBlock.querySelector("img").src = "/api/channels/" + channel.id + "/qr/listener.svg?cache=" + Date.now();
+        }),
+        actionButton("Delete Channel", "danger", async () => {
+          if (!confirm("Delete channel " + channel.name + "?")) return;
+          await api("/api/channels/" + channel.id, { method: "DELETE" });
+          status("Channel deleted.");
+          await loadAll();
+        })
+      );
+      return card;
+    }
+
+    function buttonLink(label, href) {
+      const a = document.createElement("a");
+      a.className = "button secondary";
+      a.href = href;
+      a.textContent = label;
+      return a;
+    }
+
+    function linkField(label, value) {
+      const labelEl = document.createElement("label");
+      labelEl.textContent = label;
+      const input = document.createElement("input");
+      input.className = "link-field";
+      input.readOnly = true;
+      input.value = value;
+      input.addEventListener("focus", () => input.select());
+      labelEl.appendChild(input);
+      return labelEl;
+    }
+
+    function qr(label, src) {
+      const box = document.createElement("div");
+      box.className = "qr-block";
+      const title = document.createElement("strong");
+      title.textContent = label;
+      const img = document.createElement("img");
+      img.className = "qr";
+      img.src = src;
+      img.alt = label;
+      box.append(title, img);
+      return box;
+    }
+
+    function actionButton(label, className, handler) {
+      const button = document.createElement("button");
+      button.textContent = label;
+      button.className = className;
+      button.addEventListener("click", handler);
+      return button;
+    }
+
+    async function refreshToken(channelId, kind) {
+      const data = await api("/api/channels/" + channelId + "/tokens/" + kind + "/refresh", { method: "POST" });
+      status(kind + " token refreshed.");
+      return data;
+    }
+
+    async function assignmentPanel(event) {
+      const box = document.createElement("div");
+      box.className = "room-card";
+      const title = document.createElement("strong");
+      title.textContent = "Assigned Event Managers";
+      box.appendChild(title);
+      const assignments = (await api("/api/events/" + event.id + "/users")).users.filter(u => u.role === "event_manager");
+      for (const user of assignments) {
+        const row = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = user.assigned;
+        checkbox.addEventListener("change", async () => {
+          if (checkbox.checked) {
+            await api("/api/events/" + event.id + "/users", { method: "POST", body: JSON.stringify({ userId: user.id }) });
+          } else {
+            await api("/api/events/" + event.id + "/users/" + user.id, { method: "DELETE" });
+          }
+          status("Assignment updated.");
+        });
+        row.append(checkbox, " " + (user.displayName || user.username));
+        box.appendChild(row);
+      }
+      return box;
+    }
+
+    $("createUser").addEventListener("click", async () => {
+      await api("/api/users", {
+        method: "POST",
+        body: JSON.stringify({
+          email: $("newEmail").value.trim(),
+          displayName: $("newDisplayName").value.trim(),
+          password: $("newPassword").value,
+          role: $("newRole").value,
+        }),
+      });
+      $("newEmail").value = "";
+      $("newDisplayName").value = "";
+      $("newPassword").value = "";
+      status("User created.");
+      await loadAll();
+    });
+
+    $("dashboardButton").addEventListener("click", () => showDashboard());
+    $("dashboardProfile").addEventListener("click", () => showPage("profilePanel"));
+    $("dashboardEvents").addEventListener("click", () => showPage("eventsPanel"));
+    $("dashboardUsers").addEventListener("click", () => showPage("usersPanel"));
+    $("backToEvents").addEventListener("click", () => showPage("eventsPanel"));
+    $("refreshEvent").addEventListener("click", loadAll);
+    $("toggleNewEventForm").addEventListener("click", () => toggleEventForm(true));
+    $("cancelEventBtn").addEventListener("click", () => toggleEventForm(false));
+
+    $("saveProfile").addEventListener("click", async () => {
+      const data = await api("/api/auth/profile", {
+        method: "PATCH",
+        body: JSON.stringify({
+          email: $("profileUsername").value.trim(),
+          displayName: $("profileDisplayName").value.trim(),
+        }),
+      });
+      me = data.user;
+      $("whoami").textContent = me.displayName + " (" + me.role + ")";
+      status("Profile saved.");
+      await loadAll();
+    });
+
+    $("changeOwnPassword").addEventListener("click", async () => {
+      await api("/api/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ password: $("profilePassword").value }),
+      });
+      $("profilePassword").value = "";
+      status("Password changed.");
+    });
+
+    $("createEventBtn").addEventListener("click", async () => {
+      const name = $("newEventName").value.trim();
+      if (!name) {
+        status("Event name is required.", true);
+        return;
+      }
+      try {
+        await api("/api/events", {
+          method: "POST",
+          body: JSON.stringify({
+            name,
+            location: $("newEventLocation").value.trim(),
+            publicDescription: $("newEventDescription").value.trim() || "Live audio for this event.",
+          }),
+        });
+        status("Event created with EN channel.");
+        toggleEventForm(false);
+        resetEventForm();
+        await loadAll();
+      } catch (e) {
+        status(e.message, true);
+      }
+    });
+
+    $("newEventName").addEventListener("keypress", (e) => {
+      if (e.key === "Enter") $("createEventBtn").click();
+    });
+
+    $("refresh").addEventListener("click", loadAll);
+    $("logout").addEventListener("click", async () => {
+      await api("/api/auth/logout", { method: "POST" });
+      location.href = "/";
+    });
+
+    init().catch(e => status(e.message, true));
   </script>
 </body>
 </html>

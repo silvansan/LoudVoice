@@ -3,86 +3,201 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Speaker</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 40px auto; max-width: 500px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 24px; }
-    h2 { margin-top: 0; }
-    label { display: block; margin-top: 12px; }
-    select, input { width: 100%; padding: 10px; font-size: 16px; margin-top: 6px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; }
-    button { padding: 10px 16px; font-size: 15px; margin-top: 12px; cursor: pointer; border-radius: 6px; border: none; }
-    #start { background: #0066cc; color: #fff; }
-    #stop  { background: #cc3300; color: #fff; }
-    pre { white-space: pre-wrap; background: #f7f7f7; padding: 12px; border-radius: 10px; margin-top: 12px; font-size: 13px; }
-  </style>
+  <title>Speaker - lOudvoice</title>
+  <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
-  <div class="card">
-    <h2>🎙 Speaker</h2>
-    <label>Room       <select id="room"></select></label>
-    <label>Microphone <select id="mic"></select></label>
-    <label>Name       <input  id="name" value="speaker" /></label>
-    <button id="start">Start publishing</button>
-    <button id="stop" disabled>Stop</button>
-    <pre id="log"></pre>
-  </div>
+  <main class="shell public-shell">
+    <header class="brand event-brand">
+      <img id="logo" class="logo event-logo" src="/logo.svg" alt="Event logo" />
+      <p class="eyebrow">Speaker</p>
+      <h1 id="eventName">lOudvoice</h1>
+      <p id="description"></p>
+    </header>
+
+    <section class="card" id="tokenPrompt">
+      <h2>Speaker token</h2>
+      <label>Token
+        <input id="tokenInput" type="text" autocomplete="off" />
+      </label>
+      <div class="toolbar">
+        <button id="tokenSubmit">Load speaker page</button>
+      </div>
+      <pre id="tokenStatus" class="status"></pre>
+    </section>
+
+    <section class="card player-card hidden" id="playerCard">
+      <div class="room-top">
+        <div>
+          <span class="section-label">Channel</span>
+          <h2 id="channelName">Loading...</h2>
+        </div>
+        <span id="hlsStatus" class="status-pill">HLS auto</span>
+      </div>
+
+      <label>Microphone <select id="mic"></select></label>
+      <label>Name <input id="name" value="speaker" autocomplete="name" /></label>
+
+      <div class="toolbar">
+        <button id="start">Start Publishing</button>
+        <button id="stop" class="danger" disabled>Stop</button>
+      </div>
+      <pre id="log"></pre>
+    </section>
+  </main>
+
   <script type="module">
     import { Room, createLocalAudioTrack } from "https://unpkg.com/livekit-client/dist/livekit-client.esm.mjs";
 
     const $ = id => document.getElementById(id);
-    const log = m => ($("log").textContent += m + "\n");
-    let conn = null;
+    const params = new URLSearchParams(location.search);
+    let token = params.get("token") || "";
+    const [, , eventSlug, channelName] = location.pathname.split("/").map(decodeURIComponent);
+    let channel = null;
+    let room = null;
+    let track = null;
 
-    async function loadRooms() {
-      const r = await fetch("/rooms");
-      const data = await r.json();
-      $("room").innerHTML = data.rooms.map(r => `<option>${r}</option>`).join("");
+    function log(message) {
+      $("log").textContent += message + "\n";
+      $("log").scrollTop = $("log").scrollHeight;
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, options);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Request failed: " + response.status);
+      return data;
+    }
+
+    function showTokenPrompt(message) {
+      $("tokenPrompt").classList.remove("hidden");
+      $("playerCard").classList.add("hidden");
+      $("tokenInput").value = token;
+      $("tokenStatus").textContent = message || "";
+      $("tokenStatus").classList.toggle("error", Boolean(message));
+    }
+
+    function hideTokenPrompt() {
+      $("tokenPrompt").classList.add("hidden");
+      $("tokenStatus").textContent = "";
+    }
+
+    function updateUrlToken(value) {
+      token = value;
+      const url = new URL(location.href);
+      url.searchParams.set("token", token);
+      history.replaceState(null, "", url.href);
+    }
+
+    async function loadChannel() {
+      const url = new URL("/api/public/channel", location.origin);
+      url.searchParams.set("event", eventSlug);
+      url.searchParams.set("channel", channelName);
+      url.searchParams.set("role", "speaker");
+      url.searchParams.set("token", token);
+      const data = await api(url);
+      channel = data.channel;
+      $("logo").src = data.logoUrl || "/logo.svg";
+      $("eventName").textContent = data.event.name || "lOudvoice";
+      $("description").textContent = data.event.publicDescription || data.event.location || "";
+      $("channelName").textContent = channel.name;
+      document.title = channel.name + " Speaker - " + data.event.name;
+      hideTokenPrompt();
+      $("playerCard").classList.remove("hidden");
     }
 
     async function listMics() {
       await navigator.mediaDevices.getUserMedia({ audio: true });
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const mics = devices.filter(d => d.kind === "audioinput");
-      $("mic").innerHTML = mics.map(d =>
-        `<option value="${d.deviceId}">${d.label || "Mic " + d.deviceId.slice(0, 6)}</option>`
-      ).join("");
+      const mics = devices.filter(device => device.kind === "audioinput");
+      $("mic").replaceChildren(...mics.map(device => {
+        const option = document.createElement("option");
+        option.value = device.deviceId;
+        option.textContent = device.label || "Microphone";
+        return option;
+      }));
       if (!mics.length) log("No microphones found.");
     }
 
-    async function getToken(room, name, role) {
-      const r = await fetch("/token?room=" + encodeURIComponent(room) + "&name=" + encodeURIComponent(name) + "&role=" + encodeURIComponent(role));
-      if (!r.ok) throw new Error("Token fetch failed: " + r.status);
-      return await r.json();
+    async function livekitToken() {
+      const url = new URL("/api/livekit/token", location.origin);
+      url.searchParams.set("channelId", channel.id);
+      url.searchParams.set("role", "speaker");
+      url.searchParams.set("token", token);
+      return await api(url);
     }
 
-    $("start").onclick = async () => {
+    async function startHls() {
+      const url = new URL("/api/channels/" + encodeURIComponent(channel.id) + "/speaker-session/start", location.origin);
+      url.searchParams.set("token", token);
+      const data = await api(url, { method: "POST" });
+      $("hlsStatus").classList.add("active");
+      $("hlsStatus").textContent = "HLS On";
+      return data.hls;
+    }
+
+    $("start").addEventListener("click", async () => {
       try {
         $("start").disabled = true;
-        const data = await getToken($("room").value, $("name").value || "speaker", "speak");
-        log("Got token, connecting to: " + data.livekitUrl);
-        conn = new Room();
-        await conn.connect(data.livekitUrl, data.token);
-        log("Connected: " + $("room").value);
-        const track = await createLocalAudioTrack({ deviceId: { exact: $("mic").value } });
-        await conn.localParticipant.publishTrack(track);
-        log("Publishing audio…");
+        const identity = $("name").value.trim() || "speaker";
+        const data = await livekitToken();
+        log("Connecting to " + data.livekitUrl);
+        room = new Room();
+        await room.connect(data.livekitUrl, data.token);
+        const micId = $("mic").value;
+        track = await createLocalAudioTrack(micId ? { deviceId: { exact: micId } } : {});
+        await room.localParticipant.publishTrack(track);
+        log(identity + " is publishing in " + channel.name + ".");
+        await startHls();
+        log("HLS started for listener phones.");
         $("stop").disabled = false;
-      } catch (e) {
-        log("ERROR: " + (e?.message || e));
+      } catch (error) {
+        log("ERROR: " + (error?.message || error));
         $("start").disabled = false;
       }
-    };
+    });
 
-    $("stop").onclick = async () => {
+    $("stop").addEventListener("click", async () => {
       $("stop").disabled = true;
-      if (conn) await conn.disconnect();
-      conn = null;
+      if (track) track.stop();
+      if (room) await room.disconnect();
+      track = null;
+      room = null;
       log("Disconnected.");
       $("start").disabled = false;
-    };
+    });
 
-    loadRooms();
-    listMics().catch(err => log("Mic error: " + err));
+    window.addEventListener("beforeunload", () => {
+      if (track) track.stop();
+      if (room) room.disconnect();
+    });
+
+    $("tokenSubmit").addEventListener("click", async () => {
+      const value = $("tokenInput").value.trim();
+      if (!value) {
+        showTokenPrompt("Token is required.");
+        return;
+      }
+      updateUrlToken(value);
+      try {
+        await loadChannel();
+        await listMics();
+      } catch (error) {
+        showTokenPrompt("Invalid or expired speaker token. Enter a valid token.");
+        log("ERROR: " + (error?.message || error));
+      }
+    });
+
+    if (!token) {
+      showTokenPrompt("Enter your speaker token to continue.");
+    } else {
+      loadChannel()
+        .then(listMics)
+        .catch(error => {
+          showTokenPrompt("Invalid or expired speaker token. Enter a valid token.");
+          log("ERROR: " + (error?.message || error));
+        });
+    }
   </script>
 </body>
 </html>

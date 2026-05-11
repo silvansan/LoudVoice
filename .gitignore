@@ -1,2 +1,4 @@
 node_modules
 .env
+loudvoice_web/data/
+loudvoice_web/uploads/

@@ -3,64 +3,280 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Listener</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 40px auto; max-width: 500px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 24px; }
-    h2 { margin-top: 0; }
-    label { display: block; margin-top: 12px; }
-    select { width: 100%; padding: 10px; font-size: 16px; margin-top: 6px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; }
-    button { padding: 10px 16px; font-size: 15px; margin-top: 12px; cursor: pointer; border-radius: 6px; border: none; background: #0066cc; color: #fff; }
-    pre { white-space: pre-wrap; background: #f7f7f7; padding: 12px; border-radius: 10px; margin-top: 12px; font-size: 13px; }
-  </style>
+  <title>Listen - lOudvoice</title>
+  <link rel="stylesheet" href="/app.css" />
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
 <body>
-  <div class="card">
-    <h2>🎧 Listener</h2>
-    <label>Room <select id="room"></select></label>
-    <button id="join">Join</button>
-    <pre id="log"></pre>
-  </div>
+  <main class="shell public-shell">
+    <header class="brand event-brand">
+      <img id="logo" class="logo event-logo" src="/logo.svg" alt="Event logo" />
+      <p class="eyebrow">Listen</p>
+      <h1 id="eventName">lOudvoice</h1>
+      <p id="description"></p>
+    </header>
+
+    <section class="card" id="tokenPrompt">
+      <h2>Listener token</h2>
+      <label>Event slug
+        <input id="eventInput" type="text" autocomplete="off" />
+      </label>
+      <label>Channel name
+        <input id="channelInput" type="text" autocomplete="off" />
+      </label>
+      <label>Token
+        <input id="tokenInput" type="text" autocomplete="off" />
+      </label>
+      <div class="toolbar">
+        <button id="tokenSubmit">Load listener page</button>
+      </div>
+      <pre id="tokenStatus" class="status"></pre>
+    </section>
+
+    <section class="card player-card hidden" id="playerCard">
+      <div class="room-top">
+        <div>
+          <span class="section-label">Channel</span>
+          <h2 id="channelName">Loading...</h2>
+        </div>
+        <span id="modePill" class="status-pill">Player</span>
+      </div>
+
+      <p id="modeNote" class="mode-note"></p>
+      <audio id="audio" controls playsinline></audio>
+
+      <div class="toolbar">
+        <button id="play">Play</button>
+        <button id="switchMode" class="secondary">Switch Player</button>
+      </div>
+      <pre id="log"></pre>
+    </section>
+  </main>
+
   <script type="module">
     import { Room } from "https://unpkg.com/livekit-client/dist/livekit-client.esm.mjs";
 
     const $ = id => document.getElementById(id);
-    const log = m => ($("log").textContent += m + "\n");
+    const params = new URLSearchParams(location.search);
+    let token = params.get("token") || "";
+    const forcedMode = params.get("mode");
+    const pathParts = location.pathname.split("/").filter(Boolean);
+    const directMode = pathParts.length === 1 && pathParts[0].endsWith("listener.html");
+    let eventSlug = directMode ? "" : decodeURIComponent(pathParts[1] || "");
+    let channelName = directMode ? "" : decodeURIComponent(pathParts[2] || "");
+    const phoneLike = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+      (matchMedia("(pointer: coarse)").matches && matchMedia("(max-width: 900px)").matches);
+    let mode = forcedMode === "webrtc" || forcedMode === "hls" ? forcedMode : (phoneLike ? "hls" : "webrtc");
+    let channel = null;
+    let room = null;
+    let hls = null;
+    let latestHlsUrl = null;
+    let pollTimer = null;
 
-    async function loadRooms() {
-      const r = await fetch("/rooms");
-      const data = await r.json();
-      $("room").innerHTML = data.rooms.map(r => `<option>${r}</option>`).join("");
+    function log(message) {
+      $("log").textContent += message + "\n";
+      $("log").scrollTop = $("log").scrollHeight;
     }
 
-    async function getToken(room) {
-      const r = await fetch("/token?room=" + encodeURIComponent(room) + "&name=listener&role=listen");
-      if (!r.ok) throw new Error("Token fetch failed: " + r.status);
-      return await r.json();
+    async function api(path, options = {}) {
+      const response = await fetch(path, options);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Request failed: " + response.status);
+      return data;
     }
 
-    $("join").onclick = async () => {
-      try {
-        $("join").disabled = true;
-        const roomName = $("room").value;
-        const data = await getToken(roomName);
-        log("Got token, connecting to: " + data.livekitUrl);
-        const conn = new Room();
-        conn.on("trackSubscribed", track => {
-          if (track.kind === "audio") {
-            document.body.appendChild(track.attach());
-            log("Audio subscribed.");
-          }
-        });
-        await conn.connect(data.livekitUrl, data.token);
-        log("Connected (listen-only): " + roomName);
-      } catch (e) {
-        log("ERROR: " + (e?.message || e));
-        $("join").disabled = false;
+    function showTokenPrompt(message) {
+      $("tokenPrompt").classList.remove("hidden");
+      $("playerCard").classList.add("hidden");
+      $("tokenInput").value = token;
+      $("eventInput").value = eventSlug;
+      $("channelInput").value = channelName;
+      $("eventInput").parentElement.classList.toggle("hidden", !directMode);
+      $("channelInput").parentElement.classList.toggle("hidden", !directMode);
+      $("tokenStatus").textContent = message || "";
+      $("tokenStatus").classList.toggle("error", Boolean(message));
+    }
+
+    function hideTokenPrompt() {
+      $("tokenPrompt").classList.add("hidden");
+      $("tokenStatus").textContent = "";
+    }
+
+    function updateUrlToken(value) {
+      token = value;
+      const url = new URL(location.href);
+      url.searchParams.set("token", token);
+      history.replaceState(null, "", url.href);
+    }
+
+    function applyMode() {
+      const hlsMode = mode === "hls";
+      $("modePill").textContent = hlsMode ? "HLS" : "WebRTC";
+      $("modePill").classList.toggle("active", hlsMode);
+      $("play").textContent = hlsMode && !latestHlsUrl ? "Waiting for Speaker" : (hlsMode ? "Play HLS" : "Join Live Audio");
+      $("switchMode").textContent = hlsMode ? "Use WebRTC" : "Use HLS";
+      $("modeNote").textContent = hlsMode
+        ? "Phone playback is selected for background-friendly listening."
+        : "WebRTC playback is selected for lower latency.";
+      $("play").disabled = hlsMode && !latestHlsUrl;
+    }
+
+    async function loadChannel(specificEvent, specificChannel) {
+      const url = new URL("/api/public/channel", location.origin);
+      const eventToLoad = specificEvent ?? eventSlug;
+      const channelToLoad = specificChannel ?? channelName;
+      url.searchParams.set("event", eventToLoad);
+      url.searchParams.set("channel", channelToLoad);
+      url.searchParams.set("role", "listener");
+      url.searchParams.set("token", token);
+      const data = await api(url);
+      channel = data.channel;
+      eventSlug = eventToLoad;
+      channelName = channelToLoad;
+      $("logo").src = data.logoUrl || "/logo.svg";
+      $("eventName").textContent = data.event.name || "lOudvoice";
+      $("description").textContent = data.event.publicDescription || data.event.location || "";
+      $("channelName").textContent = channel.name;
+      document.title = channel.name + " Listen - " + data.event.name;
+      hideTokenPrompt();
+      $("playerCard").classList.remove("hidden");
+      if (mode === "hls") startHlsPolling();
+    }
+
+    async function livekitToken() {
+      const url = new URL("/api/livekit/token", location.origin);
+      url.searchParams.set("channelId", channel.id);
+      url.searchParams.set("role", "listener");
+      url.searchParams.set("token", token);
+      return await api(url);
+    }
+
+    async function hlsStatus() {
+      const url = new URL("/api/channels/" + encodeURIComponent(channel.id) + "/hls", location.origin);
+      url.searchParams.set("token", token);
+      return await api(url);
+    }
+
+    async function playWebRtc() {
+      if (hls) {
+        hls.destroy();
+        hls = null;
       }
-    };
+      if (room) await room.disconnect();
+      const data = await livekitToken();
+      log("Connecting with WebRTC to " + data.livekitUrl);
+      room = new Room();
+      room.on("trackSubscribed", track => {
+        if (track.kind === "audio") {
+          $("audio").srcObject = null;
+          track.attach($("audio"));
+          log("Audio subscribed.");
+        }
+      });
+      await room.connect(data.livekitUrl, data.token);
+      log("Connected to " + channel.name + ".");
+    }
 
-    loadRooms();
+    function attachHls(url) {
+      const audio = $("audio");
+      if (room) {
+        room.disconnect();
+        room = null;
+      }
+      if (hls) {
+        hls.destroy();
+        hls = null;
+      }
+      audio.replaceChildren();
+      audio.srcObject = null;
+      if (audio.canPlayType("application/vnd.apple.mpegurl")) {
+        audio.src = url;
+      } else if (window.Hls && Hls.isSupported()) {
+        hls = new Hls({ liveSyncDurationCount: 3 });
+        hls.loadSource(url);
+        hls.attachMedia(audio);
+      } else {
+        throw new Error("This browser cannot play HLS.");
+      }
+      return audio.play();
+    }
+
+    async function refreshHlsAvailability() {
+      if (!channel || mode !== "hls") return;
+      try {
+        const status = await hlsStatus();
+        latestHlsUrl = status.active && status.url ? status.url : null;
+        applyMode();
+      } catch (error) {
+        log("ERROR: " + (error?.message || error));
+      }
+    }
+
+    function startHlsPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      refreshHlsAvailability();
+      pollTimer = setInterval(refreshHlsAvailability, 2500);
+    }
+
+    async function playHls() {
+      const status = await hlsStatus();
+      latestHlsUrl = status.active && status.url ? status.url : null;
+      applyMode();
+      if (!latestHlsUrl) throw new Error("HLS is not running yet. Ask the speaker to start publishing.");
+      log("Playing HLS for " + channel.name + ".");
+      await attachHls(latestHlsUrl);
+    }
+
+    $("play").addEventListener("click", async () => {
+      try {
+        $("play").disabled = true;
+        if (mode === "hls") await playHls();
+        else await playWebRtc();
+      } catch (error) {
+        log("ERROR: " + (error?.message || error));
+      } finally {
+        $("play").disabled = false;
+      }
+    });
+
+    $("switchMode").addEventListener("click", () => {
+      mode = mode === "hls" ? "webrtc" : "hls";
+      if (mode === "hls") startHlsPolling();
+      applyMode();
+    });
+
+    $("tokenSubmit").addEventListener("click", async () => {
+      const value = $("tokenInput").value.trim();
+      const eventValue = directMode ? $("eventInput").value.trim() : eventSlug;
+      const channelValue = directMode ? $("channelInput").value.trim() : channelName;
+      if (!value) {
+        showTokenPrompt("Token is required.");
+        return;
+      }
+      if (directMode && (!eventValue || !channelValue)) {
+        showTokenPrompt("Event slug and channel name are required.");
+        return;
+      }
+      updateUrlToken(value);
+      try {
+        await loadChannel(eventValue, channelValue);
+      } catch (error) {
+        showTokenPrompt("Invalid or expired listener token. Enter a valid token.");
+        log("ERROR: " + (error?.message || error));
+      }
+    });
+
+    applyMode();
+    if (!token) {
+      showTokenPrompt("Enter your listener token to continue.");
+    } else if (directMode && (!eventSlug || !channelName)) {
+      showTokenPrompt("Enter the event slug and channel name for this listener token.");
+    } else {
+      loadChannel().catch(error => {
+        showTokenPrompt("Invalid or expired listener token. Enter a valid token.");
+        log("ERROR: " + (error?.message || error));
+      });
+    }
   </script>
 </body>
 </html>

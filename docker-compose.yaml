@@ -1,15 +1,25 @@
-version: "3.8"
-
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: livekit-redis
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no
+    networks:
+      - livekit-net
+
   livekit:
     image: livekit/livekit-server:latest
     container_name: livekit
     restart: unless-stopped
+    depends_on:
+      - redis
     environment:
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
       LIVEKIT_CONFIG: |
         port: 7880
         log_level: info
+        redis:
+          address: redis:6379
         rtc:
           tcp_port: 7881
           port_range_start: 50000
@@ -33,14 +43,43 @@ services:
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
       PUBLIC_LIVEKIT_WSS: ${PUBLIC_LIVEKIT_WSS}
       LOCAL_LIVEKIT_WSS: ${LOCAL_LIVEKIT_WSS}
+      INTERNAL_LIVEKIT_URL: http://livekit:7880
+      INITIAL_ADMIN_USERNAME: ${INITIAL_ADMIN_USERNAME:-admin}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      ACCESS_TOKEN: ${ACCESS_TOKEN}
+      LINK_BASE_URL: ${LINK_BASE_URL:-}
+      DATA_PATH: ${DATA_PATH:-/app/data/app-data.json}
+      UPLOAD_ROOT: ${UPLOAD_ROOT:-/app/uploads}
     ports:
       - "7884:8080/tcp"
     volumes:
-      - /srv/docker/livekit-web:/app
+      - ./loudvoice_web:/app
     working_dir: /app
     command: sh -c "npm i --omit=dev && node server.mjs"
+    networks:
+      - livekit-net
+
+  livekit-egress:
+    image: livekit/egress:latest
+    container_name: livekit-egress
+    restart: unless-stopped
+    depends_on:
+      - livekit
+      - redis
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      EGRESS_CONFIG_BODY: |
+        log_level: info
+        api_key: ${LIVEKIT_API_KEY}
+        api_secret: ${LIVEKIT_API_SECRET}
+        ws_url: ws://livekit:7880
+        insecure: true
+        redis:
+          address: redis:6379
+    volumes:
+      - ./loudvoice_web/public/hls:/out
+    working_dir: /out
     networks:
       - livekit-net
 

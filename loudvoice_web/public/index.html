@@ -3,30 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Voice</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 40px auto; max-width: 500px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 24px; }
-    h2 { margin-top: 0; }
-    a { display: block; margin: 12px 0; font-size: 18px; color: #0066cc; }
-  </style>
-  <script>
-    window.addEventListener("DOMContentLoaded", () => {
-      const token = new URLSearchParams(location.search).get("token") || "";
-      document.querySelectorAll("a[data-page]").forEach(a => {
-        a.href = a.dataset.page + "?token=" + encodeURIComponent(token);
-      });
-    });
-  </script>
+  <title>lOudvoice</title>
+  <meta http-equiv="refresh" content="0; url=/" />
+  <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
-  <div class="card">
-    <h2>🎙 Voice</h2>
-    <a data-page="/speaker.html" href="/speaker.html">Speaker (publish)</a>
-    <a data-page="/listen.html"  href="/listen.html">Listener</a>
-    <div style="margin-top:20px">
-      <a data-page="/admin.html" href="/admin.html" style="color:#999;font-size:13px">Admin</a>
-    </div>
-  </div>
+  <main class="shell">
+    <header class="brand">
+      <img class="logo" src="/logo.svg" alt="lOudvoice logo" />
+      <h1>lOudvoice</h1>
+      <p>Opening login...</p>
+    </header>
+  </main>
 </body>
 </html>

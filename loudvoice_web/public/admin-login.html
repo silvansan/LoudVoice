@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>lOudvoice Login</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="brand">
+      <img class="logo" src="/logo.svg" alt="lOudvoice logo" />
+      <h1>lOudvoice</h1>
+      <p>Sign in to manage events, channels, links, and HLS.</p>
+    </header>
+
+    <section class="card">
+      <h2>Login</h2>
+      <label>Email <input id="email" autocomplete="email" autofocus /></label>
+      <label>Password <input id="password" type="password" autocomplete="current-password" /></label>
+      <button id="login">Login</button>
+      <div id="status" class="status"></div>
+    </section>
+  </main>
+
+  <script>
+    const $ = id => document.getElementById(id);
+
+    async function login() {
+      const r = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: $("email").value.trim(),
+          password: $("password").value,
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        $("status").textContent = data.error || "Login failed.";
+        $("status").classList.add("error");
+        return;
+      }
+      location.href = "/admin";
+    }
+
+    $("login").addEventListener("click", login);
+    $("password").addEventListener("keydown", event => {
+      if (event.key === "Enter") login();
+    });
+  </script>
+</body>
+</html>
