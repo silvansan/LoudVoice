@@ -32,6 +32,12 @@ This file documents the changes made by the agent during the current session for
 - Updated speaker page flow so HLS start is triggered when the speaker starts publishing.
 - Added logic to update HLS status UI on start.
 
+### Mobile app scaffold
+- Created a new Flutter mobile app scaffold under `UnderSound-Mobile/app` using the bundled SDK.
+- Added an initial app entrypoint and starter UI screens for home and QR scan flow.
+- Added mobile dependencies for QR scanning, HTTP, HLS playback, and background audio support.
+- Verified setup with `flutter pub get`, `flutter analyze`, and `flutter test`.
+
 ### Container management
 - Restarted the `livekit-web` container after applying code and UI updates.
 - Confirmed that the container was recomposed and running with the latest changes.
