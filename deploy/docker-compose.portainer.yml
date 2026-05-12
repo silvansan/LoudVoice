@@ -1,0 +1,115 @@
+name: undersound
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no
+    networks:
+      - livekit-net
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    depends_on:
+      - redis
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+      LIVEKIT_CONFIG: |
+        port: 7880
+        log_level: info
+        redis:
+          address: redis:6379
+        rtc:
+          tcp_port: 7881
+          port_range_start: 50000
+          port_range_end: 50100
+          use_external_ip: true
+    ports:
+      - "7880:7880/tcp"
+      - "7881:7881/tcp"
+      - "50000-50100:50000-50100/udp"
+    networks:
+      - livekit-net
+
+  hls-init:
+    image: busybox:1.36
+    restart: "no"
+    command: sh -c "mkdir -p /hls && chmod -R 0777 /hls"
+    volumes:
+      - hls:/hls
+    networks:
+      - livekit-net
+
+  undersound-web:
+    image: node:20-alpine
+    restart: unless-stopped
+    depends_on:
+      livekit:
+        condition: service_started
+      hls-init:
+        condition: service_completed_successfully
+    environment:
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      PUBLIC_LIVEKIT_WSS: ${PUBLIC_LIVEKIT_WSS}
+      LOCAL_LIVEKIT_WSS: ${LOCAL_LIVEKIT_WSS}
+      INTERNAL_LIVEKIT_URL: http://livekit:7880
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-admin@example.com}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      LINK_BASE_URL: ${LINK_BASE_URL:-}
+      DATA_PATH: /app/data/app-data.json
+      UPLOAD_ROOT: /app/uploads
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 8080
+    ports:
+      - "7884:8080/tcp"
+    volumes:
+      - ../undersound_web:/app
+      - node_modules:/app/node_modules
+      - data:/app/data
+      - uploads:/app/uploads
+      - hls:/app/public/hls
+    working_dir: /app
+    command: sh -c "npm i --omit=dev && node server.mjs"
+    networks:
+      - livekit-net
+
+  livekit-egress:
+    image: livekit/egress:latest
+    restart: unless-stopped
+    depends_on:
+      livekit:
+        condition: service_started
+      redis:
+        condition: service_started
+      hls-init:
+        condition: service_completed_successfully
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      EGRESS_CONFIG_BODY: |
+        log_level: info
+        api_key: ${LIVEKIT_API_KEY}
+        api_secret: ${LIVEKIT_API_SECRET}
+        ws_url: ws://livekit:7880
+        insecure: true
+        redis:
+          address: redis:6379
+    volumes:
+      - hls:/out
+    working_dir: /out
+    networks:
+      - livekit-net
+
+networks:
+  livekit-net:
+    driver: bridge
+
+volumes:
+  data:
+  uploads:
+  hls:
+  node_modules:
