@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
 import QRCode from "qrcode";
@@ -149,6 +149,44 @@ function livekitUrlFor(req) {
   return isLocalBrowserHost(req) ? localWss : publicWss;
 }
 
+function hlsFilePath(publicPath) {
+  if (!publicPath || !publicPath.startsWith("/hls/")) return null;
+  const relativePath = publicPath.slice("/hls/".length);
+  const resolved = path.resolve(hlsRoot, relativePath);
+  return resolved.startsWith(path.resolve(hlsRoot)) ? resolved : null;
+}
+
+function inspectHlsStream(stream) {
+  const filePath = hlsFilePath(stream?.playlistPath);
+  if (!filePath || !existsSync(filePath)) {
+    return { active: false, reason: "Waiting for HLS playlist." };
+  }
+
+  const playlist = readFileSync(filePath, "utf8");
+  if (playlist.includes("#EXT-X-ENDLIST")) {
+    return { active: false, reason: "HLS playlist has ended." };
+  }
+
+  const dates = [...playlist.matchAll(/^#EXT-X-PROGRAM-DATE-TIME:(.+)$/gm)];
+  const lastDate = dates.length ? new Date(dates.at(-1)[1].trim()) : null;
+  if (lastDate && Date.now() - lastDate.getTime() > 45_000) {
+    return { active: false, reason: "HLS playlist is stale." };
+  }
+
+  return { active: true, reason: "" };
+}
+
+async function clearStaleHls(channel, stream, reason) {
+  if (!stream) return;
+  console.warn(`Clearing stale HLS for channel ${channel.id}: ${reason}`);
+  try {
+    if (stream.egressId) await egressClient.stopEgress(stream.egressId);
+  } catch (e) {
+    console.warn("Unable to stop stale HLS egress:", e?.message || e);
+  }
+  store.stopHls(channel.id);
+}
+
 async function ensureLiveKitRoom(roomName) {
   try {
     await roomClient.createRoom({ name: roomName });
@@ -186,7 +224,11 @@ function channelContext(channel) {
 
 async function startHls(channel) {
   const current = store.getHls(channel.id);
-  if (current) return current;
+  if (current) {
+    const inspection = inspectHlsStream(current);
+    if (inspection.active) return current;
+    await clearStaleHls(channel, current, inspection.reason);
+  }
 
   const roomName = store.roomNameFor(channel);
   await ensureLiveKitRoom(roomName);
@@ -545,7 +587,15 @@ app.get("/api/channels/:channelId/hls", (req, res) => {
     return res.status(403).json({ error: "Invalid or expired listener token" });
   }
   const stream = store.getHls(channel.id);
-  res.json({ active: Boolean(stream), url: stream?.playlistPath || null, status: stream?.status || "stopped" });
+  if (!stream) {
+    return res.json({ active: false, url: null, status: "stopped" });
+  }
+  const inspection = inspectHlsStream(stream);
+  if (!inspection.active) {
+    store.stopHls(channel.id);
+    return res.json({ active: false, url: null, status: "stopped", reason: inspection.reason });
+  }
+  res.json({ active: true, url: stream.playlistPath, status: stream.status || "active" });
 });
 
 app.post("/api/channels/:channelId/hls/start", requireEventAccess, async (req, res) => {
