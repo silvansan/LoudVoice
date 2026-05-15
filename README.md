@@ -1,6 +1,16 @@
+
+
+<p align="center"><img width="200" height="200" alt="UnderSound-Logo" src="https://github.com/user-attachments/assets/f1cc562f-eaff-42d9-a8b3-65e9814fb09d" /> </p>
+
 # UnderSound
 
 UnderSound is a self-hosted event audio app built on LiveKit. It supports multiple events, event managers, per-event branding, per-channel speaker/listener links, QR codes, WebRTC listening, and HLS listening for phones.
+
+
+Android App to pair it with this back-end server: [UnderSound Mobile](https://github.com/silvansan/UnderSound-Mobile)
+
+Advantages: WebRTC keep playing in background with screen off. Normal browser doesn't allow that, but the app has few battery optimization rules.
+
 
 ## Current Shape
 
